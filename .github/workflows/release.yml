@@ -21,11 +21,15 @@ jobs:
       - run: bun run test:keyboard
 
   build:
-    runs-on: macos-latest
+    runs-on: ${{ matrix.platform }}
     strategy:
       fail-fast: false
       matrix:
-        target: [aarch64-apple-darwin, x86_64-apple-darwin]
+        include:
+          - target: aarch64-apple-darwin
+            platform: macos-latest
+          - target: x86_64-apple-darwin
+            platform: macos-15-intel
     env:
       CMAKE_POLICY_VERSION_MINIMUM: "3.5"
       MACOSX_DEPLOYMENT_TARGET: "13.0"
@@ -71,11 +75,8 @@ jobs:
           codesign --verify --deep --strict "$APP"
           test -f "$APP/Contents/Resources/resources/licenses/LICENSE"
           test -f "$APP/Contents/Resources/resources/licenses/THIRD_PARTY_NOTICES.md"
-          if [ "$TARGET" = "aarch64-apple-darwin" ]; then
-            "$APP/Contents/MacOS/karen-voice" --list-devices
-          else
-            otool -L "$APP/Contents/MacOS/karen-voice"
-          fi
+          "$APP/Contents/MacOS/karen-voice" --list-devices
+          otool -L "$APP/Contents/MacOS/karen-voice"
           mkdir -p release-assets
           ditto -c -k --sequesterRsrc --keepParent "$APP" "release-assets/Karen-Voice_0.1.0_${TARGET}.app.zip"
           cp src-tauri/target/$TARGET/release/bundle/dmg/*.dmg release-assets/
