@@ -1,0 +1,42 @@
+name: Prebuilt Mac installer
+
+on:
+  pull_request:
+    paths:
+      - "scripts/install-macos.sh"
+      - "scripts/test-installer.py"
+      - ".github/workflows/installer.yml"
+  push:
+    paths:
+      - "scripts/install-macos.sh"
+      - "scripts/test-installer.py"
+      - ".github/workflows/installer.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  actual-release:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-latest
+            asset: Karen.Voice_0.1.0_aarch64.dmg
+          - runner: macos-15-intel
+            asset: Karen.Voice_0.1.0_x64.dmg
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download pinned actual release
+        env:
+          ASSET: ${{ matrix.asset }}
+        run: >-
+          curl --fail --location --proto '=https' --proto-redir '=https'
+          --retry 2 --output "$RUNNER_TEMP/release.dmg"
+          "https://github.com/OsirisMedici/karen-voice/releases/download/v0.1.0-preview.1/$ASSET"
+      - name: Syntax and actual-artifact integration checks
+        run: |
+          bash -n scripts/install-macos.sh
+          python3 scripts/test-installer.py "$RUNNER_TEMP/release.dmg"

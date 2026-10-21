@@ -20,6 +20,16 @@ bun run test:keyboard
 cargo clippy --locked --manifest-path src-tauri/Cargo.toml
 ```
 
+## Installer checks
+
+The prebuilt installer needs only the macOS system tools. Its developer integration suite needs Python 3 and the exact published DMG matching the test Mac's hardware:
+
+```sh
+python3 scripts/test-installer.py /absolute/path/to/the/published.dmg
+```
+
+The suite uses disposable destinations, verifies the actual release bytes, exercises failure/repeat/replacement paths, and clearly labels injected platform and activation faults. It never grants permissions or runs dictation. `.github/workflows/installer.yml` runs it on Apple Silicon and Intel runners. Successful local checks do not mean that unrun CI or recipient acceptance has passed.
+
 ## Mac release
 
 ```sh

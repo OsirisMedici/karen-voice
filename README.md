@@ -15,6 +15,22 @@ Free, open-source dictation that runs on your computer. Press a shortcut, speak,
 
 Quit other dictation apps while using the same shortcut. Karen Voice has its own settings and model directory, so another app's setup is not migrated automatically.
 
+## Install with an agent or Terminal
+
+**Use the prebuilt release. No Rust, Bun, Homebrew or source build is needed.** Give an agent running on the recipient's Mac this instruction today:
+
+> Install Karen Voice from [v0.1.0-preview.1](https://github.com/OsirisMedici/karen-voice/releases/tag/v0.1.0-preview.1). Detect Apple Silicon hardware (including a Rosetta shell) or Intel and require macOS 13+. Download the matching DMG and `SHA256SUMS-*-public.txt`; verify its SHA-256 before opening. Verify the contained app's strict code signature, `com.osirismedici.karenvoice` identity, version `0.1.0`, architecture and pinned CDHash listed in [the installer guide](docs/INSTALL.md). Install into `~/Applications` without changing Handy, settings or models. Preserve any existing Karen Voice app; refuse an unrecognized bundle or downgrade. Open the exact installed app and verify that executable is running. Report macOS approval or permission prompts for me to complete. Never disable Gatekeeper or remove quarantine.
+
+The new automatic installer is **local and pending publication**. From this checkout, run:
+
+```sh
+bash scripts/install-macos.sh
+```
+
+It selects the exact released DMG, verifies its pinned checksum and bundle, installs into `~/Applications`, opens the app and checks the running executable path. It safely repeats an exact install, refuses downgrades and changed same-version bundles, and retains a backup when replacing an older version. It never kills a running app or modifies application data. macOS may still require **Open Anyway**; a successful installation is separate from permission and dictation acceptance.
+
+See [installation, offline verification, recovery and maintainer publication](docs/INSTALL.md). There is no live remote installer command yet; do not run a guessed raw-file URL. The DMG links above work now.
+
 ## What is included
 
 - Local speech recognition with Whisper and ONNX models.
