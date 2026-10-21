@@ -79,7 +79,7 @@ jobs:
           otool -L "$APP/Contents/MacOS/karen-voice"
           mkdir -p release-assets
           ditto -c -k --sequesterRsrc --keepParent "$APP" "release-assets/Karen-Voice_0.1.0_${TARGET}.app.zip"
-          cp src-tauri/target/$TARGET/release/bundle/dmg/*.dmg release-assets/
+          cp src-tauri/target/$TARGET/release/bundle/dmg/*.dmg "release-assets/Karen-Voice_0.1.0_${TARGET}.dmg"
           cp LICENSE THIRD_PARTY_NOTICES.md release-assets/
           (cd release-assets && shasum -a 256 *.dmg *.zip > "SHA256SUMS-${TARGET}.txt")
       - uses: actions/upload-artifact@v4
