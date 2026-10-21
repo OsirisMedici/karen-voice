@@ -1,0 +1,53 @@
+name: Verify built-app transcription
+
+on:
+  workflow_dispatch:
+    inputs:
+      build_run_id:
+        description: Successful Mac build run containing the Apple Silicon artifact
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  transcribe:
+    runs-on: macos-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          run-id: ${{ inputs.build_run_id }}
+          name: mac-aarch64-apple-darwin
+          path: artifact
+      - name: Verify archive and extract the built app
+        run: |
+          set -euo pipefail
+          (cd artifact && shasum -a 256 -c SHA256SUMS-aarch64-apple-darwin.txt)
+          ditto -x -k artifact/*.app.zip extracted
+          codesign --verify --deep --strict "extracted/Karen Voice.app"
+      - name: Download a pinned public speech model
+        run: |
+          set -euo pipefail
+          MODEL_DIR="$HOME/Library/Application Support/com.osirismedici.karenvoice/models"
+          mkdir -p "$MODEL_DIR"
+          MODEL="$MODEL_DIR/parakeet-tdt-0.6b-v3-Q8_0.gguf"
+          curl --fail --location --retry 3 --max-time 900 \
+            'https://blob.handy.computer/handy-computer/parakeet-tdt-0.6b-v3-gguf/85ac09ea12fc4b1112fa76810059364bc6adc9de/parakeet-tdt-0.6b-v3-Q8_0.gguf' \
+            -o "$MODEL"
+          echo "5859f77944efcd8eafa23a6350731960b2b55b2203df51f319665c807d802cc7  $MODEL" | shasum -a 256 -c -
+      - name: Generate a speech sample and transcribe it
+        run: |
+          set -euo pipefail
+          say -v Samantha -r 160 -o sample.wav --file-format=WAVE --data-format=LEI16@16000 --channels=1 \
+            'Karen Voice turns speech into text. This is a local transcription test.'
+          python3 scripts/verify-built-transcription.py "extracted/Karen Voice.app/Contents/MacOS/karen-voice" sample.wav
+      - uses: actions/upload-artifact@v4
+        with:
+          name: transcription-verification
+          path: transcription-result.json
+          if-no-files-found: error
