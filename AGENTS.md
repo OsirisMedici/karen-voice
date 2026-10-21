@@ -11,3 +11,5 @@ All product copy uses the i18next translation system. Keep React components func
 Use conventional commits. Run lint, format:check, frontend build and appropriate existing tests. Run cargo fmt and cargo clippy for Rust changes. For UI changes, inspect the rendered app and test an affected interaction. Browser previews with mocked native commands demonstrate UI only; record native dictation acceptance separately.
 
 Preview updates are manual. A future updater must use this repository and its own signing keys. Mac previews are ad-hoc signed, not notarized, until a maintainer configures Developer ID signing.
+
+End every final user-facing task response with the exact words `over and out`.

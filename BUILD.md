@@ -33,3 +33,9 @@ The app identity is `com.osirismedici.karenvoice`, the executable is `karen-voic
 ## Branding
 
 The original vector icon lives in `assets/icon.svg`. Regenerate platform icons with `bun run tauri icon assets/icon.svg`. Shared UI and recording-overlay accents live in `src/styles/theme.css`; their light and dark accent values match the Grove palette in T3 Code.
+
+## Verify real speech recognition
+
+In GitHub Actions, run **Verify built-app transcription** and provide the successful Mac build run ID. This downloads the exact Apple Silicon app artifact, verifies its archive and signature, downloads a pinned public model with a SHA-256 check, and transcribes generated speech. The model stays on the disposable runner and is not included in the release.
+
+This checks the real speech engine. Microphone capture, Accessibility permissions and paste into another app remain separate user acceptance checks.
