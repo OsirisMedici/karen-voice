@@ -1,0 +1,105 @@
+name: Mac preview release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install --frozen-lockfile
+      - run: bun run lint
+      - run: bunx prettier --check .
+      - run: bun run build
+      - run: bun run test:keyboard
+
+  build:
+    runs-on: macos-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [aarch64-apple-darwin, x86_64-apple-darwin]
+    env:
+      CMAKE_POLICY_VERSION_MINIMUM: "3.5"
+      MACOSX_DEPLOYMENT_TARGET: "13.0"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+          key: ${{ matrix.target }}
+      - run: bun install --frozen-lockfile
+      - name: Install Intel ONNX Runtime
+        if: matrix.target == 'x86_64-apple-darwin'
+        shell: bash
+        run: |
+          set -euo pipefail
+          ORT_VERSION="1.24.2"
+          curl --fail --location --retry 3 -o ort.tgz "https://blob.handy.computer/onnxruntime-osx-x86_64-${ORT_VERSION}.tgz"
+          tar xzf ort.tgz
+          ORT_DIR="$PWD/onnxruntime-osx-x86_64-${ORT_VERSION}"
+          echo "ORT_LIB_LOCATION=$ORT_DIR/lib" >> "$GITHUB_ENV"
+          echo "ORT_PREFER_DYNAMIC_LINK=1" >> "$GITHUB_ENV"
+          jq --arg lib "$ORT_DIR/lib/libonnxruntime.${ORT_VERSION}.dylib" '.bundle.macOS.frameworks = [$lib]' src-tauri/tauri.conf.json > config.tmp
+          mv config.tmp src-tauri/tauri.conf.json
+      - name: Rust formatting
+        run: cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
+      - name: Rust lint
+        run: cargo clippy --locked --manifest-path src-tauri/Cargo.toml --target ${{ matrix.target }}
+      - name: Build app and DMG
+        run: bun run tauri build --target ${{ matrix.target }} --bundles app,dmg -- --locked
+      - name: Verify and package
+        shell: bash
+        env:
+          TARGET: ${{ matrix.target }}
+        run: |
+          set -euo pipefail
+          APP="src-tauri/target/$TARGET/release/bundle/macos/Karen Voice.app"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP/Contents/Info.plist")" = "com.osirismedici.karenvoice"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP/Contents/Info.plist")" = "0.1.0"
+          codesign --verify --deep --strict "$APP"
+          test -f "$APP/Contents/Resources/resources/licenses/LICENSE"
+          test -f "$APP/Contents/Resources/resources/licenses/THIRD_PARTY_NOTICES.md"
+          if [ "$TARGET" = "aarch64-apple-darwin" ]; then
+            "$APP/Contents/MacOS/karen-voice" --list-devices
+          else
+            otool -L "$APP/Contents/MacOS/karen-voice"
+          fi
+          mkdir -p release-assets
+          ditto -c -k --sequesterRsrc --keepParent "$APP" "release-assets/Karen-Voice_0.1.0_${TARGET}.app.zip"
+          cp src-tauri/target/$TARGET/release/bundle/dmg/*.dmg release-assets/
+          cp LICENSE THIRD_PARTY_NOTICES.md release-assets/
+          (cd release-assets && shasum -a 256 *.dmg *.zip > "SHA256SUMS-${TARGET}.txt")
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mac-${{ matrix.target }}
+          path: release-assets/
+          if-no-files-found: error
+
+  publish:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [quality, build]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+          merge-multiple: true
+      - name: Publish preview downloads
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" release-assets/* --verify-tag --prerelease --title "Karen Voice 0.1.0 Preview" --notes-file docs/RELEASE_NOTES.md
