@@ -553,7 +553,7 @@ fn initialize_handy_keys_with_rollback(app: &AppHandle) -> Result<bool, String> 
     }
 
     if let Err(e) = handy_keys::init_shortcuts(app) {
-        error!("Failed to initialize Karen VoiceKeys: {}", e);
+        error!("Failed to initialize HandyKeys: {}", e);
         // Rollback to Tauri
         let mut settings = settings::get_settings(app);
         settings.keyboard_implementation = KeyboardImplementation::Tauri;
@@ -561,7 +561,7 @@ fn initialize_handy_keys_with_rollback(app: &AppHandle) -> Result<bool, String> 
         crate::secure_input::reconcile_fallback(app);
         tauri_impl::init_shortcuts(app);
         return Err(format!(
-            "Failed to initialize Karen VoiceKeys: {}. Reverted to Tauri.",
+            "Failed to initialize HandyKeys: {}. Reverted to Tauri.",
             e
         ));
     }
@@ -1479,10 +1479,7 @@ mod tests {
             "printscreen",
         ] {
             assert!(key.parse::<Shortcut>().is_ok(), "Tauri rejected {key}");
-            assert!(
-                key.parse::<Hotkey>().is_ok(),
-                "Karen VoiceKeys rejected {key}"
-            );
+            assert!(key.parse::<Hotkey>().is_ok(), "HandyKeys rejected {key}");
         }
     }
 }

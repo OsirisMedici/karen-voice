@@ -45,3 +45,8 @@ result
 
 # Python bytecode (scripts/)
 __pycache__/
+
+# Local credentials
+.env
+.env.*
+!.env.example

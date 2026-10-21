@@ -418,7 +418,7 @@ pub fn validate_shortcut(raw: &str) -> Result<(), String> {
     // Just verify the string is parseable
     raw.parse::<Hotkey>()
         .map(|_| ())
-        .map_err(|e| format!("Invalid shortcut for Karen VoiceKeys: {}", e))
+        .map_err(|e| format!("Invalid shortcut for HandyKeys: {}", e))
 }
 
 /// Initialize handy-keys shortcuts
@@ -461,7 +461,7 @@ pub fn init_shortcuts(app: &AppHandle) -> Result<(), String> {
 pub fn register_shortcut(app: &AppHandle, binding: ShortcutBinding) -> Result<(), String> {
     let state = app
         .try_state::<HandyKeysState>()
-        .ok_or("Karen VoiceKeysState not initialized")?;
+        .ok_or("HandyKeysState not initialized")?;
     state.register(&binding)
 }
 
@@ -469,7 +469,7 @@ pub fn register_shortcut(app: &AppHandle, binding: ShortcutBinding) -> Result<()
 pub fn unregister_shortcut(app: &AppHandle, binding: ShortcutBinding) -> Result<(), String> {
     let state = app
         .try_state::<HandyKeysState>()
-        .ok_or("Karen VoiceKeysState not initialized")?;
+        .ok_or("HandyKeysState not initialized")?;
     state.unregister(&binding)
 }
 
@@ -494,7 +494,7 @@ pub fn start_handy_keys_recording(app: AppHandle, binding_id: String) -> Result<
 
     let state = app
         .try_state::<HandyKeysState>()
-        .ok_or("Karen VoiceKeysState not initialized")?;
+        .ok_or("HandyKeysState not initialized")?;
 
     // Suspend every registered shortcut so a combo that overlaps an existing
     // binding can't fire it (or have its keys swallowed) mid-capture.
@@ -518,7 +518,7 @@ pub fn stop_handy_keys_recording(app: AppHandle) -> Result<(), String> {
 
     let state = app
         .try_state::<HandyKeysState>()
-        .ok_or("Karen VoiceKeysState not initialized")?;
+        .ok_or("HandyKeysState not initialized")?;
 
     // Restore shortcuts from settings regardless of how recording ended.
     // A commit has already registered the new binding via change_binding;
