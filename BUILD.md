@@ -17,6 +17,7 @@ bun run lint
 bun run format:check
 bun run build
 bun run test:keyboard
+bun run test:settings
 cargo clippy --locked --manifest-path src-tauri/Cargo.toml
 ```
 

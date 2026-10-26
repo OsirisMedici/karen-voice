@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { subscribeWithSelector } from "zustand/middleware";
-import { listen } from "@tauri-apps/api/event";
+import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type {
   AppSettings as Settings,
   AudioDevice,
@@ -27,14 +27,14 @@ interface SettingsStore {
 
   // Actions
   initialize: () => Promise<void>;
-  loadDefaultSettings: () => Promise<void>;
+  loadDefaultSettings: () => Promise<boolean>;
   loadUpdateChecksLocked: () => Promise<void>;
   updateSetting: <K extends keyof Settings>(
     key: K,
     value: Settings[K],
   ) => Promise<void>;
   resetSetting: (key: keyof Settings) => Promise<void>;
-  refreshSettings: () => Promise<void>;
+  refreshSettings: () => Promise<boolean>;
   refreshAudioDevices: () => Promise<void>;
   refreshOutputDevices: () => Promise<void>;
   updateBinding: (id: string, binding: string) => Promise<void>;
@@ -199,6 +199,25 @@ const settingUpdaters: {
     commands.changeExtraRecordingBufferSetting(value as number),
 };
 
+// These resources belong to the webview, rather than any settings component.
+let initializationPromise: Promise<void> | undefined;
+let initialized = false;
+let disposed = false;
+const settingsUnlisteners: UnlistenFn[] = [];
+
+const cleanupSettingsListeners = async () => {
+  const results = await Promise.allSettled(
+    settingsUnlisteners
+      .splice(0)
+      .map((unlisten) => Promise.resolve().then(unlisten)),
+  );
+  for (const result of results) {
+    if (result.status === "rejected") {
+      console.error("Failed to remove settings listener:", result.reason);
+    }
+  }
+};
+
 export const useSettingsStore = create<SettingsStore>()(
   subscribeWithSelector((set, get) => ({
     settings: null,
@@ -242,6 +261,7 @@ export const useSettingsStore = create<SettingsStore>()(
               settings.selected_output_device ?? "Default",
           };
           set({ settings: normalizedSettings, isLoading: false });
+          return true;
         } else {
           console.error("Failed to load settings:", result.error);
           set({ isLoading: false });
@@ -250,6 +270,7 @@ export const useSettingsStore = create<SettingsStore>()(
         console.error("Failed to load settings:", error);
         set({ isLoading: false });
       }
+      return false;
     },
 
     // Load audio devices
@@ -607,12 +628,14 @@ export const useSettingsStore = create<SettingsStore>()(
         const result = await commands.getDefaultSettings();
         if (result.status === "ok") {
           set({ defaultSettings: result.data });
+          return true;
         } else {
           console.error("Failed to load default settings:", result.error);
         }
       } catch (error) {
         console.error("Failed to load default settings:", error);
       }
+      return false;
     },
 
     // Check whether update checks are locked by system configuration
@@ -630,36 +653,77 @@ export const useSettingsStore = create<SettingsStore>()(
     },
 
     // Initialize everything
-    initialize: async () => {
-      const {
-        refreshSettings,
-        checkCustomSounds,
-        loadDefaultSettings,
-        loadUpdateChecksLocked,
-      } = get();
+    initialize: () => {
+      if (initializationPromise) return initializationPromise;
+      if (initialized || disposed) return Promise.resolve();
 
-      // Note: Audio devices are NOT refreshed here. The frontend (App.tsx)
-      // is responsible for calling refreshAudioDevices/refreshOutputDevices
-      // after onboarding completes. This avoids triggering permission dialogs
-      // on macOS before the user is ready.
-      await Promise.all([
-        loadDefaultSettings(),
-        refreshSettings(),
-        checkCustomSounds(),
-        loadUpdateChecksLocked(),
-      ]);
+      // Defer work until the shared promise is assigned, including before any
+      // synchronous store subscribers could request initialization again.
+      initializationPromise = Promise.resolve().then(async () => {
+        try {
+          // Start subscriptions and hydration together, and await every task
+          // before deciding whether initialization succeeded or needs rollback.
+          // Device enumeration stays gated by onboarding in App.tsx.
+          const results = await Promise.allSettled([
+            listen("model-state-changed", () => {
+              void get().refreshSettings();
+            }),
+            listen<{ setting?: string }>("settings-changed", (event) => {
+              void get().refreshSettings();
+              if (event.payload.setting === "selected_microphone") {
+                void get().refreshAudioDevices();
+              }
+            }),
+            get().loadDefaultSettings(),
+            get().refreshSettings(),
+            get().checkCustomSounds(),
+            get().loadUpdateChecksLocked(),
+          ]);
+          const [
+            modelListener,
+            settingsListener,
+            defaultsLoaded,
+            settingsLoaded,
+          ] = results;
+          // Wait for both registrations, including a late success after the
+          // other failed, so rollback cannot leak a listener into the retry.
+          for (const result of [modelListener, settingsListener]) {
+            if (result.status === "fulfilled") {
+              settingsUnlisteners.push(result.value);
+            }
+          }
+          const failed = results.find((r) => r.status === "rejected");
+          if (failed?.status === "rejected") throw failed.reason;
+          if (disposed) return;
 
-      // Re-fetch settings when the backend changes them (e.g. language
-      // reset during model switch). The backend is the source of truth.
-      listen("model-state-changed", () => {
-        get().refreshSettings();
-      });
-      listen<{ setting?: string }>("settings-changed", (event) => {
-        get().refreshSettings();
-        if (event.payload.setting === "selected_microphone") {
-          get().refreshAudioDevices();
+          if (
+            defaultsLoaded.status !== "fulfilled" ||
+            !defaultsLoaded.value ||
+            settingsLoaded.status !== "fulfilled" ||
+            !settingsLoaded.value
+          ) {
+            throw new Error(
+              "Settings hydration failed; initialization can be retried",
+            );
+          }
+          initialized = true;
+        } catch (error) {
+          await cleanupSettingsListeners();
+          console.error("Failed to initialize settings:", error);
+        } finally {
+          if (disposed) await cleanupSettingsListeners();
+          set({ isLoading: false });
+          initializationPromise = undefined;
         }
       });
+      return initializationPromise;
     },
   })),
 );
+
+if (import.meta.hot) {
+  import.meta.hot.dispose(() => {
+    disposed = true;
+    void cleanupSettingsListeners();
+  });
+}
