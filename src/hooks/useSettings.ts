@@ -19,7 +19,7 @@ interface UseSettingsReturn {
     value: Settings[K],
   ) => Promise<void>;
   resetSetting: (key: keyof Settings) => Promise<void>;
-  refreshSettings: () => Promise<void>;
+  refreshSettings: () => Promise<boolean>;
   refreshAudioDevices: () => Promise<void>;
   refreshOutputDevices: () => Promise<void>;
 
@@ -47,12 +47,11 @@ interface UseSettingsReturn {
 export const useSettings = (): UseSettingsReturn => {
   const store = useSettingsStore();
 
-  // Initialize on first mount
+  // The store shares initialization across consumers and permits a later
+  // mount to retry a failed attempt without an automatic retry loop.
   useEffect(() => {
-    if (store.isLoading) {
-      store.initialize();
-    }
-  }, [store.initialize, store.isLoading]);
+    void store.initialize();
+  }, [store.initialize]);
 
   return {
     settings: store.settings,
