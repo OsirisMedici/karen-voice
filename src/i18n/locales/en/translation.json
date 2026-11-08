@@ -14,6 +14,7 @@
     "models": "Models",
     "advanced": "Advanced",
     "postProcessing": "Post Process",
+    "cleanDictation": "Clean Dictation",
     "history": "History",
     "debug": "Debug",
     "about": "About"
@@ -177,8 +178,8 @@
             "description": "The keyboard shortcut to cancel the current recording."
           },
           "transcribe_with_post_process": {
-            "name": "Post-Processing Hotkey",
-            "description": "Optional: A dedicated hotkey that always applies AI post-processing to your transcription."
+            "name": "Clean Dictation Shortcut",
+            "description": "Use this shortcut when you want to clean up your transcript before it is pasted."
           }
         },
         "errors": {
@@ -408,6 +409,14 @@
           "traditional": "Traditional"
         }
       }
+    },
+    "cleanDictation": {
+      "enable": "Enable Clean Dictation",
+      "description": "Use a separate shortcut to remove fillers and fix punctuation. If cleanup fails, Karen Voice pastes the original transcript.",
+      "provider": "Cleanup Provider",
+      "providerNotice": "Choose a provider and model to clean up your text. If you choose a cloud provider, the cleanup shortcut sends your transcript to that provider.",
+      "customInstructions": "Custom cleanup instructions",
+      "shortcutError": "Couldn’t update the Clean Dictation shortcut. Check whether another app or shortcut is using those keys."
     },
     "postProcessing": {
       "hotkey": {

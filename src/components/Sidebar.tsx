@@ -57,10 +57,10 @@ export const SECTIONS_CONFIG = {
     enabled: () => true,
   },
   postprocessing: {
-    labelKey: "sidebar.postProcessing",
+    labelKey: "sidebar.cleanDictation",
     icon: Sparkles,
     component: PostProcessingSettings,
-    enabled: (settings) => settings?.post_process_enabled ?? false,
+    enabled: () => true,
   },
   debug: {
     labelKey: "sidebar.debug",
@@ -101,23 +101,22 @@ export const Sidebar: React.FC<SidebarProps> = ({
           const isActive = activeSection === section.id;
 
           return (
-            <div
+            <button
               key={section.id}
-              className={`flex gap-2 items-center p-2 w-full rounded-lg cursor-pointer transition-colors ${
+              type="button"
+              aria-current={isActive ? "page" : undefined}
+              className={`flex gap-1.5 items-center p-2 w-full text-start rounded-lg cursor-pointer transition-colors ${
                 isActive
                   ? "bg-logo-primary text-[var(--color-on-brand)]"
                   : "hover:bg-mid-gray/20 hover:opacity-100 opacity-85"
               }`}
               onClick={() => onSectionChange(section.id)}
             >
-              <Icon width={24} height={24} className="shrink-0" />
-              <p
-                className="text-sm font-medium truncate"
-                title={t(section.labelKey)}
-              >
+              <Icon width={20} height={20} className="shrink-0" />
+              <span className="min-w-0 break-words text-sm font-medium leading-tight">
                 {t(section.labelKey)}
-              </p>
-            </div>
+              </span>
+            </button>
           );
         })}
       </div>

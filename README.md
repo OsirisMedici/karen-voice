@@ -24,6 +24,12 @@ Quit other dictation apps while using the same shortcut. Karen Voice has its own
 
 This first release provides dictation. A connection to the Karen assistant and voice commands that perform actions are future work.
 
+## Product inspiration
+
+**Superwhisper is our primary product reference.** Its modes pair a speech model with optional text cleanup for a specific task. That fits Karen Voice's local dictation and gives us a clear direction for making optional formatting easier to use. [Superwhisper Modes](https://superwhisper.com/docs/modes/modes)
+
+We also take inspiration from [Wispr Flow](https://docs.wisprflow.ai/articles/2772472373-what-is-flow), [Aqua Voice](https://aquavoice.com/guide), [Monologue](https://www.monologue.to/dictation), and [VoiceInk](https://github.com/beingpax/VoiceInk).
+
 ## Privacy and updates
 
 Local dictation processes audio on your computer. Model downloads require the internet. Optional post-processing can send transcribed text to a provider you configure; it is off by default. Local history may contain sensitive text and audio, and you can manage it in Settings.

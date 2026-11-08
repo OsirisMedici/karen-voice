@@ -20,6 +20,7 @@ import { ApiKeyField } from "../PostProcessingSettingsApi/ApiKeyField";
 import { ModelSelect } from "../PostProcessingSettingsApi/ModelSelect";
 import { usePostProcessProviderState } from "../PostProcessingSettingsApi/usePostProcessProviderState";
 import { ShortcutInput } from "../ShortcutInput";
+import { PostProcessingToggle } from "../PostProcessingToggle";
 import { useSettings } from "../../../hooks/useSettings";
 
 const PostProcessingSettingsApiComponent: React.FC = () => {
@@ -426,24 +427,41 @@ PostProcessingSettingsPrompts.displayName = "PostProcessingSettingsPrompts";
 
 export const PostProcessingSettings: React.FC = () => {
   const { t } = useTranslation();
+  const { getSetting } = useSettings();
+  const enabled = getSetting("post_process_enabled");
 
   return (
     <div className="max-w-3xl w-full mx-auto space-y-6">
-      <SettingsGroup title={t("settings.postProcessing.hotkey.title")}>
-        <ShortcutInput
-          shortcutId="transcribe_with_post_process"
-          descriptionMode="tooltip"
-          grouped={true}
-        />
+      <SettingsGroup title={t("sidebar.cleanDictation")}>
+        <PostProcessingToggle descriptionMode="inline" grouped={true} />
+        {enabled ? (
+          <ShortcutInput
+            shortcutId="transcribe_with_post_process"
+            descriptionMode="tooltip"
+            grouped={true}
+          />
+        ) : null}
       </SettingsGroup>
-
-      <SettingsGroup title={t("settings.postProcessing.api.title")}>
-        <PostProcessingSettingsApi />
-      </SettingsGroup>
-
-      <SettingsGroup title={t("settings.postProcessing.prompts.title")}>
-        <PostProcessingSettingsPrompts />
-      </SettingsGroup>
+      {enabled ? (
+        <>
+          <SettingsGroup title={t("settings.cleanDictation.provider")}>
+            <Alert variant="info" contained>
+              {t("settings.cleanDictation.providerNotice")}
+            </Alert>
+            <PostProcessingSettingsApi />
+          </SettingsGroup>
+          <details>
+            <summary className="cursor-pointer text-sm font-medium">
+              {t("settings.cleanDictation.customInstructions")}
+            </summary>
+            <div className="mt-3">
+              <SettingsGroup title={t("settings.postProcessing.prompts.title")}>
+                <PostProcessingSettingsPrompts />
+              </SettingsGroup>
+            </div>
+          </details>
+        </>
+      ) : null}
     </div>
   );
 };

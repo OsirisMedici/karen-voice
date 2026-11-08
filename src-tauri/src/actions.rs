@@ -24,6 +24,9 @@ use tauri::Manager;
 use tauri::{AppHandle, Emitter};
 
 const CANCELLATION_POLL_INTERVAL: Duration = Duration::from_millis(25);
+const CLEANUP_TIMEOUT: Duration = Duration::from_secs(5);
+#[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+static APPLE_CLEANUP_SLOT: tokio::sync::Semaphore = tokio::sync::Semaphore::const_new(1);
 
 #[derive(Clone, serde::Serialize)]
 struct RecordingErrorEvent {
@@ -184,6 +187,15 @@ async fn post_process_transcription(settings: &AppSettings, transcription: &str)
         .get(&provider.id)
         .cloned()
         .unwrap_or_default();
+    if api_key.trim().is_empty()
+        && !matches!(
+            provider.id.as_str(),
+            "custom" | APPLE_INTELLIGENCE_PROVIDER_ID
+        )
+    {
+        debug!("Cleanup skipped because its provider has no API key");
+        return None;
+    }
 
     // Ask these providers to skip reasoning/thinking — post-processing rarely
     // benefits from it and it adds seconds of latency. llm_client picks the
@@ -208,26 +220,29 @@ async fn post_process_transcription(settings: &AppSettings, transcription: &str)
                 }
 
                 let token_limit = model.trim().parse::<i32>().unwrap_or(0);
-                return match apple_intelligence::process_text_with_system_prompt(
-                    &system_prompt,
-                    &user_content,
-                    token_limit,
-                ) {
-                    Ok(result) => {
-                        if result.trim().is_empty() {
-                            debug!("Apple Intelligence returned an empty response");
-                            None
-                        } else {
-                            let result = strip_invisible_chars(&result);
-                            debug!(
-                                "Apple Intelligence post-processing succeeded. Output length: {} chars",
-                                result.len()
-                            );
-                            Some(result)
-                        }
+                // The Swift bridge blocks while its model runs. Keep that work
+                // off the async runtime so cancellation and the deadline can run.
+                // A timed-out call can still be running, so allow one at a time.
+                let Ok(permit) = APPLE_CLEANUP_SLOT.try_acquire() else {
+                    return None;
+                };
+                return match tauri::async_runtime::spawn_blocking(move || {
+                    let _permit = permit;
+                    apple_intelligence::process_text_with_system_prompt(
+                        &system_prompt,
+                        &user_content,
+                        token_limit,
+                    )
+                })
+                .await
+                {
+                    Ok(Ok(result)) => Some(strip_invisible_chars(&result)),
+                    Ok(Err(err)) => {
+                        error!("Apple Intelligence post-processing failed: {}", err);
+                        None
                     }
                     Err(err) => {
-                        error!("Apple Intelligence post-processing failed: {}", err);
+                        error!("Apple Intelligence cleanup task failed: {}", err);
                         None
                     }
                 };
@@ -281,15 +296,12 @@ async fn post_process_transcription(settings: &AppSettings, transcription: &str)
                             return Some(result);
                         } else {
                             error!("Structured output response missing 'transcription' field");
-                            return Some(strip_invisible_chars(content));
+                            return None;
                         }
                     }
                     Err(e) => {
-                        error!(
-                            "Failed to parse structured output JSON: {}. Returning raw content.",
-                            e
-                        );
-                        return Some(strip_invisible_chars(content));
+                        error!("Failed to parse structured output JSON: {}", e);
+                        return None;
                     }
                 }
             }
@@ -350,38 +362,58 @@ pub(crate) struct ProcessedTranscription {
     pub post_process_prompt: Option<String>,
 }
 
+async fn finish_cleanup(
+    transcription: &str,
+    cleanup: impl Future<Output = Option<String>>,
+    timeout: Duration,
+) -> ProcessedTranscription {
+    let post_processed_text = match tokio::time::timeout(timeout, cleanup).await {
+        Ok(text) => text.filter(|text| !is_blank_transcription(text)),
+        Err(_) => {
+            warn!("Cleanup timed out. Falling back to original transcription.");
+            None
+        }
+    };
+
+    ProcessedTranscription {
+        final_text: post_processed_text
+            .clone()
+            .unwrap_or_else(|| transcription.to_string()),
+        post_processed_text,
+        post_process_prompt: None,
+    }
+}
+
 pub(crate) async fn process_transcription_output(
     app: &AppHandle,
     transcription: &str,
     post_process: bool,
 ) -> ProcessedTranscription {
+    if !post_process {
+        return ProcessedTranscription {
+            final_text: transcription.to_string(),
+            post_processed_text: None,
+            post_process_prompt: None,
+        };
+    }
+
     let settings = get_settings(app);
-    let mut final_text = transcription.to_string();
-    let mut post_processed_text: Option<String> = None;
-    let mut post_process_prompt: Option<String> = None;
-
-    if post_process {
-        if let Some(processed_text) = post_process_transcription(&settings, &final_text).await {
-            post_processed_text = Some(processed_text.clone());
-            final_text = processed_text;
-
-            if let Some(prompt_id) = &settings.post_process_selected_prompt_id {
-                if let Some(prompt) = settings
-                    .post_process_prompts
-                    .iter()
-                    .find(|prompt| &prompt.id == prompt_id)
-                {
-                    post_process_prompt = Some(prompt.prompt.clone());
-                }
-            }
+    let cleanup = async {
+        if settings.post_process_enabled {
+            post_process_transcription(&settings, transcription).await
+        } else {
+            None
         }
+    };
+    let mut result = finish_cleanup(transcription, cleanup, CLEANUP_TIMEOUT).await;
+    if result.post_processed_text.is_some() {
+        result.post_process_prompt = settings
+            .post_process_prompts
+            .iter()
+            .find(|prompt| Some(&prompt.id) == settings.post_process_selected_prompt_id.as_ref())
+            .map(|prompt| prompt.prompt.clone());
     }
-
-    ProcessedTranscription {
-        final_text,
-        post_processed_text,
-        post_process_prompt,
-    }
+    result
 }
 
 impl ShortcutAction for TranscribeAction {
@@ -884,8 +916,8 @@ pub static ACTION_MAP: Lazy<HashMap<String, Arc<dyn ShortcutAction>>> = Lazy::ne
 #[cfg(test)]
 mod tests {
     use super::{
-        complete_unless_cancelled, is_blank_transcription, should_use_streaming_overlay,
-        strip_think_block,
+        complete_unless_cancelled, finish_cleanup, is_blank_transcription,
+        should_use_streaming_overlay, strip_think_block,
     };
     use crate::settings::OverlayStyle;
     use std::future;
@@ -905,6 +937,29 @@ mod tests {
     fn non_blank_transcription_is_kept() {
         assert!(!is_blank_transcription("hello"));
         assert!(!is_blank_transcription("  hello  "));
+    }
+
+    #[test]
+    fn unusable_cleanup_keeps_the_exact_original_for_paste() {
+        tauri::async_runtime::block_on(async {
+            let original = "Um, ship version 2.5.";
+            let timeout = Duration::from_millis(20);
+            for response in [None, Some(" \n\t".to_string())] {
+                let result = finish_cleanup(original, future::ready(response), timeout).await;
+                assert_eq!(result.final_text, original);
+                assert!(result.post_processed_text.is_none());
+            }
+
+            let result = finish_cleanup(original, future::pending(), timeout).await;
+            assert_eq!(result.final_text, original);
+            assert!(result.post_processed_text.is_none());
+
+            let cleaned = "Ship version 2.5.";
+            let result =
+                finish_cleanup(original, future::ready(Some(cleaned.to_string())), timeout).await;
+            assert_eq!(result.final_text, cleaned);
+            assert_eq!(result.post_processed_text.as_deref(), Some(cleaned));
+        });
     }
 
     #[test]

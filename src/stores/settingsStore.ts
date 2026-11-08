@@ -12,6 +12,7 @@ import type {
 } from "@/bindings";
 import { commands } from "@/bindings";
 import { toast } from "sonner";
+import i18n from "i18next";
 
 interface SettingsStore {
   settings: Settings | null;
@@ -155,8 +156,15 @@ const settingUpdaters: {
   auto_submit_key: (value) =>
     commands.changeAutoSubmitKeySetting(value as string),
   history_limit: (value) => commands.updateHistoryLimit(value as number),
-  post_process_enabled: (value) =>
-    commands.changePostProcessEnabledSetting(value as boolean),
+  post_process_enabled: async (value) => {
+    const result = await commands.changePostProcessEnabledSetting(
+      value as boolean,
+    );
+    if (result.status === "error") {
+      toast.error(i18n.t("settings.cleanDictation.shortcutError"));
+      throw new Error(result.error);
+    }
+  },
   post_process_selected_prompt_id: (value) =>
     commands.setPostProcessSelectedPrompt(value as string),
   mute_while_recording: (value) =>
